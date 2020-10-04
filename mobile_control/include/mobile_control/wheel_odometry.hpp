@@ -115,12 +115,10 @@ void WheelOdometry::subscriber_set()
 
 void WheelOdometry::callback_imu(const Imu::ConstPtr& imu_msg)
 {
-    /*
     q_imu.w() = imu_msg->orientation.w;
     q_imu.x() = imu_msg->orientation.x;
     q_imu.y() = imu_msg->orientation.y;
     q_imu.z() = imu_msg->orientation.z;
-    */
    
     auto euler = q_imu.toRotationMatrix().eulerAngles(0,1,2);
     
