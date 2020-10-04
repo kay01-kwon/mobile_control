@@ -160,7 +160,7 @@ void WheelOdometry::calculate_velocity_position()
     angle1 = velocity_heading + yaw;
     angle2  = angle1 + v_robot(2)*dt;
 
-    v_est = getRotMat(angle1)*v_robot;
+    v_est = getRotMat(yaw)*v_robot;
 
     if(fabs(linear_velocity/v_robot(2)) < 0.0001)
     {
