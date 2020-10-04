@@ -37,6 +37,7 @@ class WheelOdometry{
     void velocity_pose_publish();
     Vector3d getTransformVec(double angle1, double angle2, double dt);
     MatrixXd getRotMat(double angle);
+    void angleNormalizer(double &angle);
     
     private:
     // Variables
@@ -107,19 +108,20 @@ void WheelOdometry::publisher_set()
 
 void WheelOdometry::subscriber_set()
 {
-    subscriber_Imu = nh_.subscribe("/imu/data", 1, &WheelOdometry::callback_imu,this);
+    subscriber_Imu = nh_.subscribe("/imu", 1, &WheelOdometry::callback_imu,this);
     subscriber_encoder = nh_.subscribe("/measure", 1, &WheelOdometry::callback_enc,this);
     
 }
 
 void WheelOdometry::callback_imu(const Imu::ConstPtr& imu_msg)
 {
-    
+    /*
     q_imu.w() = imu_msg->orientation.w;
     q_imu.x() = imu_msg->orientation.x;
     q_imu.y() = imu_msg->orientation.y;
     q_imu.z() = imu_msg->orientation.z;
-
+    */
+   
     auto euler = q_imu.toRotationMatrix().eulerAngles(0,1,2);
     
     if(is_yaw_init == false){
@@ -129,6 +131,7 @@ void WheelOdometry::callback_imu(const Imu::ConstPtr& imu_msg)
     }
     
     yaw = euler[2] - yaw_init;
+    angleNormalizer(yaw);
 
     q_est = AngleAxisd(0,Vector3d::UnitX())
             * AngleAxisd(0,Vector3d::UnitY())
@@ -145,14 +148,13 @@ void WheelOdometry::callback_enc(const vel::ConstPtr& enc_msg)
                 -(enc_msg->velocity[2]), enc_msg->velocity[3];
 
     calculate_velocity_position();
-    //std::cout<<"***********"<<std::endl;
-    //std::cout<<p_est_curr<<std::endl;
+    std::cout<<"Yaw"<<std::endl;
+    std::cout<<p_est_curr(2)<<std::endl;
 }
 
 void WheelOdometry::calculate_velocity_position()
 {
     v_robot = Jacob * measure_val/gear_ratio*rpm_to_radps;
-    v_robot(2) = angular_velocity;
 
     velocity_heading = atan2(v_robot(1),v_robot(0));
     linear_velocity = calculate_linear_velocity(v_robot);
@@ -162,17 +164,19 @@ void WheelOdometry::calculate_velocity_position()
 
     v_est = getRotMat(yaw)*v_robot;
 
-    if(fabs(linear_velocity/v_robot(2)) < 0.0001)
+    if(fabs(v_robot(2))>0.0001)
     {
         p_est_curr = p_est_prev 
-        + linear_velocity/v_robot(2)*getTransformVec(angle1,angle2,dt);
+        + linear_velocity/angular_velocity*getTransformVec(angle1,angle2,dt);
     }
     else
     {
-
         p_est_curr = p_est_prev + v_est*dt;
     }
 
+    
+
+    p_est_curr(2) = yaw;
 
     p_est_prev = p_est_curr;
 
@@ -227,4 +231,9 @@ MatrixXd WheelOdometry::getRotMat(double angle)
 
     return R;
 
+}
+
+void WheelOdometry::angleNormalizer(double& angle)
+{
+    angle = atan2(sin(angle),cos(angle));
 }
