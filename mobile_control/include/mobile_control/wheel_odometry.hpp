@@ -155,6 +155,7 @@ void WheelOdometry::callback_enc(const vel::ConstPtr& enc_msg)
 void WheelOdometry::calculate_velocity_position()
 {
     v_robot = Jacob * measure_val/gear_ratio*rpm_to_radps;
+    v_robot(2) = angular_velocity;
 
     velocity_heading = atan2(v_robot(1),v_robot(0));
     linear_velocity = calculate_linear_velocity(v_robot);
