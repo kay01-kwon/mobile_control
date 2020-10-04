@@ -165,7 +165,7 @@ void pd_control::publisher_set()
 void pd_control::subscriber_set()
 {
     subscriber_traj = nh_.subscribe("/move_base/TebLocalPlannerROS/teb_feedback", 100, &pd_control::callback_traj, this);
-    subscriber_vel = nh_.subscribe("/wheel_odom");
+    subscriber_vel = nh_.subscribe("/wheel_odom",1,&pd_control::callback_vel,this);
     subscriber_goal = nh_.subscribe("/move_base_simple/goal", 100, &pd_control::callback_goal, this);
 
 }
