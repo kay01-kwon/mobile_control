@@ -18,6 +18,7 @@
 #define _USE_MATH_DEFINES
 
 using teb_local_planner::TrajectoryPointMsg;
+using teb_local_planner::FeedbackMsg;
 
 using geometry_msgs::PoseStamped;
 using tf::TransformListener;
@@ -39,7 +40,7 @@ class pd_control{
     void init_Variables();
     void publisher_set();
     void subscriber_set();
-    void callback_traj(const TrajectoryPointMsg::ConstPtr& traj_msg);
+    void callback_traj(const FeedbackMsg::ConstPtr& traj_msg);
     void callback_vel(const Odometry::ConstPtr& odom);
     void callback_goal(const PoseStamped::ConstPtr& goal_msg);
     void get_SLAM_pose();
@@ -49,7 +50,7 @@ class pd_control{
     Vector4d clamp(Vector4d motor_input);
     void cmd_vel_publish();
     Matrix3d getRotMat(double yaw);
-    void angleNomalizer(double &yaw);
+    void angleNormalizer(double &yaw);
     double distance(Vector3d goal, Vector3d est);
 
     private:
@@ -73,6 +74,7 @@ class pd_control{
     Vector3d a_cmd;
     Vector3d v_cmd;
     Vector3d v_cmd_prev;
+    double v_t_prev = 0;
 
     MatrixXd Kp = MatrixXd(3,3);
     MatrixXd Kd = MatrixXd(3,3);
@@ -92,11 +94,11 @@ class pd_control{
     const double radps_to_rpm = 60/2.0/M_PI;
 
     // Controller PD Gain
-    const double Kp_xy = 10;
+    const double Kp_xy = 5;
     const double Kp_yaw = 1;
 
-    const double Kd_xy = 3;
-    const double Kd_yaw = 0.5;
+    const double Kd_xy = 2;
+    const double Kd_yaw = 0.1;
 
     bool control_enable = true;
 
@@ -164,32 +166,64 @@ void pd_control::publisher_set()
 
 void pd_control::subscriber_set()
 {
-    subscriber_traj = nh_.subscribe("/move_base/TebLocalPlannerROS/teb_feedback", 100, &pd_control::callback_traj, this);
-    subscriber_vel = nh_.subscribe("/wheel_odom",1,&pd_control::callback_vel,this);
-    subscriber_goal = nh_.subscribe("/move_base_simple/goal", 100, &pd_control::callback_goal, this);
+    subscriber_traj = nh_.subscribe("/move_base/TebLocalPlannerROS/teb_feedback", 1, &pd_control::callback_traj, this);
+    subscriber_vel = nh_.subscribe("/odom",1,&pd_control::callback_vel,this);
+    subscriber_goal = nh_.subscribe("/move_base_simple/goal", 1, &pd_control::callback_goal, this);
 
 }
 
-void pd_control::callback_traj(const TrajectoryPointMsg::ConstPtr& traj_msg)
+// TrajectorPointMsg::ConstPtr , FeedbackMsg
+void pd_control::callback_traj(const FeedbackMsg::ConstPtr& traj_msg)
 {
+/** TrajectoryPointMsg
     a_des << traj_msg->acceleration.linear.x,
             traj_msg->acceleration.linear.y,
             traj_msg->acceleration.angular.z;
 
     v_des << traj_msg->velocity.linear.x,
             traj_msg->velocity.linear.y,
-            traj_msg->velocity.linear.z;
+            traj_msg->velocity.angular.z;
 
     q_des.w() = traj_msg->pose.orientation.w;
     q_des.x() = traj_msg->pose.orientation.x;
     q_des.y() = traj_msg->pose.orientation.y;
     q_des.z() = traj_msg->pose.orientation.z;
-    
+
     auto euler = q_des.toRotationMatrix().eulerAngles(0,1,2);
+    std::cout<<euler[2]<<std::endl;
 
     p_des << traj_msg->pose.position.x,
             traj_msg->pose.position.y, 
             euler[2];
+**/
+
+// FeedbackMsg
+    int robot_index = traj_msg -> selected_trajectory_idx;
+        
+    int traj_index = 1;
+
+    a_des<<traj_msg->trajectories[robot_index].trajectory[traj_index].acceleration.linear.x,
+        traj_msg->trajectories[robot_index].trajectory[traj_index].acceleration.linear.y,
+        traj_msg->trajectories[robot_index].trajectory[traj_index].acceleration.angular.z;
+
+    v_des<<traj_msg->trajectories[robot_index].trajectory[traj_index].velocity.linear.x,
+        traj_msg->trajectories[robot_index].trajectory[traj_index].velocity.linear.y,
+        traj_msg->trajectories[robot_index].trajectory[traj_index].velocity.angular.z;
+
+    q_des.w() = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.w;
+    q_des.x() = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.x;
+    q_des.y() = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.y;
+    q_des.z() = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.z;
+    
+    auto euler = q_des.toRotationMatrix().eulerAngles(0,1,2);
+
+    angleNormalizer(euler[2]);
+
+    p_des<<traj_msg->trajectories[robot_index].trajectory[traj_index].pose.position.x,
+        traj_msg->trajectories[robot_index].trajectory[traj_index].pose.position.y,
+        euler[2];
+
+
 }
 
 void pd_control::callback_vel(const Odometry::ConstPtr& odom_msg)
@@ -227,7 +261,7 @@ void pd_control::get_SLAM_pose()
         listener_.lookupTransform("map","base_footprint",ros::Time(0),transform);
         tf::Quaternion quat = transform.getRotation();
         yaw_est = tf::getYaw(quat);
-        angleNomalizer(yaw_est);
+        angleNormalizer(yaw_est);
         p_est << transform.getOrigin().x(), 
                 transform.getOrigin().y(),
                 yaw_est;
@@ -244,19 +278,20 @@ void pd_control::error_calculation()
     p_err = p_des - p_est;
     v_err = v_des - v_est;
 
-    p_err = getRotMat(p_est(2))*p_err;
-    v_err = getRotMat(p_est(2))*v_err;
-
-    angleNomalizer(p_err(2));
+    angleNormalizer(p_err(2));
     
+    ROS_INFO("P err : %lf %lf %lf",p_err(0),p_err(1),p_err(2));
 }
 
 void pd_control::cmd_vel_calculation()
 {
-    a_des = getRotMat(p_est(2))*a_des;
-    a_cmd = a_des + Kp*p_err + Kd*v_err;
-    v_cmd = v_cmd_prev + a_cmd*dt;
+    Vector3d v_angular;
+    v_angular<<0,0,v_des(2);
+    a_cmd = Kp*getRotMat(p_est(2))*p_err + Kd*v_err;
+    v_cmd = v_des + a_cmd*dt;
     v_cmd_prev = v_cmd;
+    //v_cmd = getRotMat(p_est(2))*v_cmd;
+    std::cout<<v_cmd<<std::endl;
 }
 
 Vector4d pd_control::inverse_kinematics(Vector3d vel_cmd)
@@ -290,20 +325,20 @@ void pd_control::cmd_vel_publish()
     motor_vel_input = inverse_kinematics(v_cmd);
     motor_vel_input = clamp(motor_vel_input*gear_ratio*radps_to_rpm);
 
-    if( distance(goal_pose,p_est) < 0.020 || control_enable == false)
+    if( distance(goal_pose,p_est) < 0.001 || control_enable == false)
     {
+        control_enable = false;
         motor_vel_input<<0,0,0,0;
-        goal_pose = p_est;
+        p_est = goal_pose;
         v_cmd<<0, 0, 0;
         v_cmd_prev<<0, 0, 0;
     }
 
-    for(int i = 0; i < 4; ++i)
-    {
-        ethercat_motor_vel.velocity[i] = (int) motor_vel_input(i);
-        if(i == 1 || i == 2 )
-            ethercat_motor_vel.velocity[i] = -(int) motor_vel_input(i);
-    }
+    ethercat_motor_vel.velocity[0] = (int) motor_vel_input(0);
+    ethercat_motor_vel.velocity[1] = (int) -motor_vel_input(1);
+    ethercat_motor_vel.velocity[2] = (int) -motor_vel_input(2);
+    ethercat_motor_vel.velocity[3] = (int) motor_vel_input(3);
+    
     publisher_cmd_vel.publish(ethercat_motor_vel);
 
     last_time = curr_time;
@@ -312,18 +347,15 @@ void pd_control::cmd_vel_publish()
 Matrix3d pd_control::getRotMat(double yaw)
 {
     Matrix3d R;
-    R << cos(yaw), -sin(yaw), 0,
-        sin(yaw), cos(yaw), 0,
+    R << cos(yaw), sin(yaw), 0,
+        -sin(yaw), cos(yaw), 0,
         0, 0, 1;
     return R; 
 }
 
-void pd_control::angleNomalizer(double &yaw)
+void pd_control::angleNormalizer(double &yaw)
 {
-    if( yaw > M_PI )
-        yaw -= 2 * M_PI;
-    else if( yaw <= - M_PI)
-        yaw += 2 * M_PI;
+    yaw = atan2(sin(yaw),cos(yaw));
 }
 
 double pd_control::distance(Vector3d goal, Vector3d est)
