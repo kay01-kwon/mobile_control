@@ -115,10 +115,12 @@ void WheelOdometry::subscriber_set()
 
 void WheelOdometry::callback_imu(const Imu::ConstPtr& imu_msg)
 {
+    
     q_imu.w() = imu_msg->orientation.w;
     q_imu.x() = imu_msg->orientation.x;
     q_imu.y() = imu_msg->orientation.y;
     q_imu.z() = imu_msg->orientation.z;
+    
    
     auto euler = q_imu.toRotationMatrix().eulerAngles(0,1,2);
     
@@ -196,9 +198,9 @@ void WheelOdometry::velocity_pose_publish()
     wheel_odom.pose.pose.orientation.y = q_est.y();
     wheel_odom.pose.pose.orientation.z = q_est.z();
     
-    wheel_odom.twist.twist.linear.x = v_est(0);
-    wheel_odom.twist.twist.linear.y = v_est(1);
-    wheel_odom.twist.twist.angular.z = v_est(2);
+    wheel_odom.twist.twist.linear.x = v_robot(0);
+    wheel_odom.twist.twist.linear.y = v_robot(1);
+    wheel_odom.twist.twist.angular.z = v_robot(2);
     
     publisher_odom.publish(wheel_odom);
     
@@ -224,8 +226,8 @@ Vector3d WheelOdometry::getTransformVec(double angle1, double angle2, double dt)
 MatrixXd WheelOdometry::getRotMat(double angle)
 {
     MatrixXd R = MatrixXd(3,3);
-    R << cos(angle), 0, 0,
-        0, sin(angle), 0,
+    R << cos(angle), -sin(angle), 0,
+        sin(angle), sin(angle), 0,
         0,  0,  1;
 
     return R;
