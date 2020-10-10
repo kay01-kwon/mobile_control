@@ -40,7 +40,7 @@ class pd_control{
     void init_Variables();
     void publisher_set();
     void subscriber_set();
-    void callback_traj(const FeedbackMsg::ConstPtr& traj_msg);
+    void callback_traj(const TrajectoryPointMsg::ConstPtr& traj_msg);
     void callback_vel(const Odometry::ConstPtr& odom);
     void callback_goal(const PoseStamped::ConstPtr& goal_msg);
     void get_SLAM_pose();
@@ -98,10 +98,10 @@ class pd_control{
     const double radps_to_rpm = 60/2.0/M_PI;
 
     // Controller PD Gain
-    const double Kp_xy = 5;
+    const double Kp_xy = 10;
     const double Kp_yaw = 1;
 
-    const double Kd_xy = 2;
+    const double Kd_xy = 3;
     const double Kd_yaw = 0.1;
 
     bool control_enable = true;
@@ -143,7 +143,7 @@ void pd_control::init_Variables()
 
     a_cmd.setZero();
     v_cmd.setZero();
-    integral.setZero();
+
     v_cmd_prev.setZero();
 
     Kp<<Kp_xy, 0, 0,
@@ -166,7 +166,7 @@ void pd_control::init_Variables()
 void pd_control::publisher_set()
 {
     publisher_cmd_vel = nh_.advertise<vel>("/input_msg",1);
-
+    publisher_error = nh_.advertise<Odometry>("/error_msg",1);
 }
 
 void pd_control::subscriber_set()
@@ -178,9 +178,9 @@ void pd_control::subscriber_set()
 }
 
 // TrajectorPointMsg::ConstPtr , FeedbackMsg
-void pd_control::callback_traj(const FeedbackMsg::ConstPtr& traj_msg)
+void pd_control::callback_traj(const TrajectoryPointMsg::ConstPtr& traj_msg)
 {
-/** 
+ 
 //TrajectoryPointMsg
     a_des << traj_msg->acceleration.linear.x,
             traj_msg->acceleration.linear.y,
@@ -202,32 +202,6 @@ void pd_control::callback_traj(const FeedbackMsg::ConstPtr& traj_msg)
             traj_msg->pose.position.y, 
             euler[2];
 
-**/
-// FeedbackMsg
-    int robot_index = traj_msg -> selected_trajectory_idx;
-        
-    int traj_index = 1;
-
-    a_des<<traj_msg->trajectories[robot_index].trajectory[traj_index].acceleration.linear.x,
-        traj_msg->trajectories[robot_index].trajectory[traj_index].acceleration.linear.y,
-        traj_msg->trajectories[robot_index].trajectory[traj_index].acceleration.angular.z;
-
-    v_des<<traj_msg->trajectories[robot_index].trajectory[traj_index].velocity.linear.x,
-        traj_msg->trajectories[robot_index].trajectory[traj_index].velocity.linear.y,
-        traj_msg->trajectories[robot_index].trajectory[traj_index].velocity.angular.z;
-
-    q_des.w() = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.w;
-    q_des.x() = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.x;
-    q_des.y() = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.y;
-    q_des.z() = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.z;
-    
-    auto euler = q_des.toRotationMatrix().eulerAngles(0,1,2);
-
-    angleNormalizer(euler[2]);
-
-    p_des<<traj_msg->trajectories[robot_index].trajectory[traj_index].pose.position.x,
-        traj_msg->trajectories[robot_index].trajectory[traj_index].pose.position.y,
-        euler[2];
 
 
 }
@@ -281,47 +255,26 @@ void pd_control::get_SLAM_pose()
 
 void pd_control::error_calculation()
 {
+    Odometry error_msg;
+    // p_err : Global frame, v_err : Gl frame
     p_err = p_des - p_est;
-    v_err = v_des - v_est;
+    v_err = v_des - getRotMat(-p_est(2))*v_est;
 
-    angleNormalizer(p_err(2));
+    error_msg.pose.pose.position.x = p_err(0);
+    error_msg.pose.pose.position.y = p_err(1);
     
+    angleNormalizer(p_err(2));
+
+    publisher_error.publish(error_msg);
     ROS_INFO("Pose : %lf %lf %lf",p_est(0),p_est(1),p_est(2));
 }
 
 void pd_control::cmd_vel_calculation()
 {
-    /**
-    Eigen::Vector2d linear_acc;
-    double a_t;
-    double a_n;
-    Eigen::Vector2d e_t;
-    Vector3d v_add;
-
-    e_t<<v_des(0), v_des(1);
-    e_t.normalize();
-    if(isnanl(e_t(0)) || isnanl(e_t(1)))
-    {
-        e_t<<p_err(0),p_err(1);
-        e_t.normalize();
-    }
-    a_cmd = Kp*getRotMat(p_est(2))*p_err + Kd*v_err;
-    linear_acc<<a_cmd(0),a_cmd(1);
-
-    a_t = linear_acc.dot(e_t);
-    v_t = v_t_prev + a_t*dt;
-
-    yaw_add = yaw_add_prev + a_cmd(2)*dt;
-    yaw_add_prev = yaw_add_prev;
-
-    v_t_prev = v_t;
-
-    v_add<<v_t*e_t(0),v_t*e_t(1),yaw_add;
-
-    v_cmd = v_des + v_add;
-    **/
-   a_cmd = Kp*getRotMat(p_est(2))*p_err + Kd*v_err;
-   v_cmd = v_des + a_cmd;
+    a_cmd = a_des + Kp*p_err + Kd*v_err;
+    v_cmd = v_cmd_prev + a_cmd*dt;
+    v_cmd_prev = v_cmd;
+    v_cmd = getRotMat(p_est(2))*v_cmd;
     std::cout<<v_cmd<<std::endl;
 }
 
@@ -363,10 +316,6 @@ void pd_control::cmd_vel_publish()
         integral<<0,0,0;
         motor_vel_input<<0,0,0,0;
         p_est = goal_pose;
-        v_t = 0;
-        v_t_prev = 0;
-        yaw_add = 0;
-        yaw_add_prev = 0;
         v_cmd<<0, 0, 0;
         v_cmd_prev<<0, 0, 0;
     }
@@ -375,6 +324,7 @@ void pd_control::cmd_vel_publish()
     ethercat_motor_vel.velocity[1] = (int) -motor_vel_input(1);
     ethercat_motor_vel.velocity[2] = (int) -motor_vel_input(2);
     ethercat_motor_vel.velocity[3] = (int) motor_vel_input(3);
+
     
     publisher_cmd_vel.publish(ethercat_motor_vel);
 
