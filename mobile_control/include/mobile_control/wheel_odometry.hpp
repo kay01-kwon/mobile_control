@@ -238,7 +238,7 @@ MatrixXd WheelOdometry::getRotMat(double angle)
 {
     MatrixXd R = MatrixXd(3,3);
     R << cos(angle), -sin(angle), 0,
-        sin(angle), sin(angle), 0,
+        sin(angle), cos(angle), 0,
         0,  0,  1;
 
     return R;
