@@ -9,6 +9,8 @@
 #include <sensor_msgs/Imu.h>
 
 #include <nav_msgs/Odometry.h>
+#include <geometry_msgs/Twist.h>
+
 
 #define _USE_MATH_DEFINES
 
@@ -22,6 +24,7 @@ using Eigen::Quaterniond;
 using Eigen::AngleAxisd;
 
 using nav_msgs::Odometry;
+using geometry_msgs::Twist;
 
 class WheelOdometry{
 
@@ -77,6 +80,7 @@ class WheelOdometry{
     // ROS
     ros::NodeHandle nh_;
     ros::Publisher publisher_odom;
+    ros::Publisher publisher_twist;
     ros::Subscriber subscriber_Imu;
     ros::Subscriber subscriber_encoder;
 
@@ -103,7 +107,8 @@ void WheelOdometry::initiate_variables()
 
 void WheelOdometry::publisher_set()
 {
-    publisher_odom = nh_.advertise<Odometry>("wheel_odom",10);
+    publisher_odom = nh_.advertise<Odometry>("wheel_odom",1);
+    publisher_twist = nh_.advertise<Twist>("vel",1);
 }
 
 void WheelOdometry::subscriber_set()
@@ -155,7 +160,8 @@ void WheelOdometry::callback_enc(const vel::ConstPtr& enc_msg)
 void WheelOdometry::calculate_velocity_position()
 {
     v_robot = Jacob * measure_val/gear_ratio*rpm_to_radps;
-    v_robot(2) = angular_velocity;
+    if(fabs(angular_velocity-v_robot(2))<1)     // 1 radps : 52.6944 deg/s
+        v_robot(2) = angular_velocity;
 
     velocity_heading = atan2(v_robot(1),v_robot(0));
     linear_velocity = calculate_linear_velocity(v_robot);
@@ -165,7 +171,7 @@ void WheelOdometry::calculate_velocity_position()
 
     v_est = getRotMat(yaw)*v_robot;
 
-    if(fabs(v_robot(2))>0.0001)
+    if(fabs(v_robot(2))>0.006)
     {
         p_est_curr = p_est_prev 
         + linear_velocity/angular_velocity*getTransformVec(angle1,angle2,dt);
@@ -190,6 +196,7 @@ void WheelOdometry::velocity_pose_publish()
     dt = t_curr - t_prev;
 
     Odometry wheel_odom;
+    Twist vel;
     wheel_odom.pose.pose.position.x = p_est_curr(0);
     wheel_odom.pose.pose.position.y = p_est_curr(1);
     
@@ -202,8 +209,12 @@ void WheelOdometry::velocity_pose_publish()
     wheel_odom.twist.twist.linear.y = v_robot(1);
     wheel_odom.twist.twist.angular.z = v_robot(2);
     
-    publisher_odom.publish(wheel_odom);
+    vel.linear.x = v_robot(0);
+    vel.linear.y = v_robot(1);
+    vel.angular.z = v_robot(2);
     
+    publisher_odom.publish(wheel_odom);
+    publisher_twist.publish(vel);
     t_prev = t_curr;
 }
 
