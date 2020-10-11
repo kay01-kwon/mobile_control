@@ -52,6 +52,7 @@ class pd_control{
     Matrix3d getRotMat(double yaw);
     void angleNormalizer(double &yaw);
     double distance(Vector3d goal, Vector3d est);
+    bool motor_vel_check(Vector4d motor_input);
 
     private:
 
@@ -312,12 +313,17 @@ void pd_control::cmd_vel_publish()
 
     if( (distance(goal_pose,p_est) < 0.020 && fabs(goal_pose(2)-p_est(2)) < 0.1) || control_enable == false)
     {
-        control_enable = false;
-        integral<<0,0,0;
-        motor_vel_input<<0,0,0,0;
-        p_est = goal_pose;
-        v_cmd<<0, 0, 0;
-        v_cmd_prev<<0, 0, 0;
+        if(motor_vel_check(motor_vel_input))
+        {
+            control_enable = motor_vel_check(motor_vel_input);
+            integral<<0,0,0;
+            motor_vel_input<<0,0,0,0;
+            p_est = goal_pose;
+            v_cmd<<0, 0, 0;
+            v_cmd_prev<<0, 0, 0;
+
+        }
+
     }
 
     ethercat_motor_vel.velocity[0] = (int) motor_vel_input(0);
@@ -348,4 +354,18 @@ void pd_control::angleNormalizer(double &yaw)
 double pd_control::distance(Vector3d goal, Vector3d est)
 {
     return sqrt(pow(goal(0)-est(0),2)+pow(goal(1)-est(1),2));
+}
+
+bool pd_control::motor_vel_check(Vector4d motor_input)
+{
+    bool check;
+    
+    check = true;
+    if(fabs(motor_input(0)) < 100 && fabs(motor_input(1)) < 100
+    && fabs(motor_input(2)) < 100 && fabs(motor_input(3)) < 100)
+    {
+        check = false;
+    }
+
+    return check;
 }
