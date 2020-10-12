@@ -93,7 +93,7 @@ class pd_control{
     const double l_sep = l_a + l_b;
 
     // Motor spec and unit conversion ratio
-    const double gear_ratio = 74.5;
+    const double gear_ratio = 73.5;
     const int motor_vel_lim = 6000;
     const double radps_to_rpm = 60/2.0/M_PI;
 
