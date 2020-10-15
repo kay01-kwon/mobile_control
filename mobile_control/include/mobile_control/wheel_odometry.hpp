@@ -169,15 +169,15 @@ void WheelOdometry::calculate_velocity_position()
 
     v_est = getRotMat(yaw)*v_robot;
 
-    if(fabs(v_robot(2))>0.1)
-    {
-        p_est_curr = p_est_prev 
-        + linear_velocity/angular_velocity*getTransformVec(angle1,angle2,dt);
-    }
-    else
-    {
+//    if(fabs(v_robot(2))>0.1)
+//    {
+//        p_est_curr = p_est_prev 
+//        + linear_velocity/angular_velocity*getTransformVec(angle1,angle2,dt);
+//    }
+//    else
+//    {
         p_est_curr = p_est_prev + v_est*dt;
-    }
+//    }
 
     
 
