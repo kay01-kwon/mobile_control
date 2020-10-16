@@ -483,7 +483,7 @@ void pd_control::display_base_arm_pose(unsigned int &k)
         base_arm_position_avg(0),base_arm_position_avg(1),base_arm_position_avg(2),
         base_arm_orientation_avg(0)*180.0/M_PI,base_arm_orientation_avg(1)*180.0/M_PI,base_arm_orientation_avg(2)*180.0/M_PI);
         tfResult = getRotRPYMat(base_arm_orientation_avg);
-        std::cout<<tfResult<<std::endl;
+        std::cout<<tfResult.transpose()<<std::endl;
         //ROS_INFO("Position(x,y,z): %lf, %lf, %lf Orientation(r p y): %lf, %lf, %lf",
         //base_arm_position(0),base_arm_position(1),base_arm_position(2),
         //base_arm_orientation(0),base_arm_orientation(1),base_arm_orientation(2));
@@ -514,7 +514,6 @@ Matrix3d pd_control::getRotRPYMat(Vector3d rpy)
             0, sin(rpy(0)), cos(rpy(0));
 
     RPY = Yawmat*Pitchmat*Rollmat;
-    RPY.transpose();
     return RPY;
 
 }
