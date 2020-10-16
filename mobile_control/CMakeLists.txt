@@ -38,8 +38,8 @@ include_directories(
 add_executable(pd_control src/pd_control.cpp)
 target_link_libraries(pd_control ${catkin_LIBRARIES})
 
-add_executable(pd_control_linear src/pd_control_linear.cpp)
-target_link_libraries(pd_control_linear ${catkin_LIBRARIES})
+add_executable(pd_control_trans src/pd_control_trans.cpp)
+target_link_libraries(pd_control_trans ${catkin_LIBRARIES})
 
 
 add_executable(wheel_odom src/wheel_odom.cpp)
