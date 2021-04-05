@@ -111,7 +111,7 @@ class pd_control{
 
     // Motor spec and unit conversion ratio
     const double gear_ratio = 73.5;
-    const int motor_vel_lim = 6000;
+    const int motor_vel_lim = 3000;
     const double radps_to_rpm = 60/2.0/M_PI;
 
     // Controller PD Gain
@@ -201,7 +201,7 @@ void pd_control::publisher_set()
 void pd_control::subscriber_set()
 {
     subscriber_traj = nh_.subscribe("/move_base/TebLocalPlannerROS/teb_feedback", 1, &pd_control::callback_traj, this);
-    subscriber_vel = nh_.subscribe("/wheel_odom",1,&pd_control::callback_vel,this);
+    subscriber_vel = nh_.subscribe("/odom",1,&pd_control::callback_vel,this);
     subscriber_goal = nh_.subscribe("/move_base_simple/goal", 1, &pd_control::callback_goal, this);
 
 }
@@ -226,11 +226,11 @@ void pd_control::callback_traj(const TrajectoryPointMsg::ConstPtr& traj_msg)
     q_des.z() = traj_msg->pose.orientation.z;
 
     auto euler = q_des.toRotationMatrix().eulerAngles(0,1,2);
-    std::cout<<euler[2]<<std::endl;
+    //std::cout<<euler[2]<<std::endl;
 
     p_des << traj_msg->pose.position.x,
             traj_msg->pose.position.y, 
-            euler[2];
+            0;
 	
 	des_traj_msg.x_des = p_des(0);
 	des_traj_msg.y_des = p_des(1);
@@ -264,7 +264,7 @@ void pd_control::callback_goal(const PoseStamped::ConstPtr& goal_msg)
 
     goal_pose << goal_msg->pose.position.x, 
                 goal_msg->pose.position.y,
-                euler2[2];
+                0;
 }
 
 void pd_control::get_SLAM_pose()
@@ -332,11 +332,20 @@ void pd_control::error_calculation()
     Odometry error_msg;
     // p_err : Global frame, v_err : Gl frame
     p_err = p_des - p_est;
+
+    if(p_err(2)<=-M_1_PI)
+        p_err(2)+=2*M_1_PI;
+    if(p_des(2)>=M_1_PI)
+        p_err(2)-=2*M_1_PI;
+
+    angleNormalizer(p_err(2));
+    //std::cout<<p_err(2)<<std::endl;
     v_err = v_des - getRotMat(-p_est(2))*v_est;
 
     error_msg.pose.pose.position.x = p_err(0);
     error_msg.pose.pose.position.y = p_err(1);
-    
+    error_msg.pose.pose.position.z = p_err(2);
+
     angleNormalizer(p_err(2));
 
     publisher_error.publish(error_msg);
@@ -376,7 +385,7 @@ void pd_control::cmd_vel_publish()
     curr_time = ros::Time::now().toSec();
     dt = curr_time - last_time;
     get_SLAM_pose();
-	get_base_arm_pose();
+	//get_base_arm_pose();
 	error_calculation();
     cmd_vel_calculation();
     motor_vel_input = inverse_kinematics(v_cmd);
@@ -390,17 +399,17 @@ void pd_control::cmd_vel_publish()
         
     }
 
-    if( distance(goal_pose,p_est) < 0.020 || control_enable == false)
+    if( distance(goal_pose,p_est) < 0.004 || control_enable == false)
     {
-        if(motor_vel_check(motor_vel_input) || control_enable == false)
-        {
+//        if(motor_vel_check(motor_vel_input) || control_enable == false)
+ //       {
             control_enable = false;
             motor_vel_input<<0,0,0,0;
             v_cmd<<0, 0, 0;
             v_cmd_prev<<0, 0, 0;
-            display_base_arm_pose(step);
-			
-        }
+            //display_base_arm_pose(step);
+			std::cout<<"stop"<<std::endl;
+//        }
 
     }
 
@@ -445,8 +454,8 @@ bool pd_control::motor_vel_check(Vector4d motor_input)
     bool check;
     
     check = true;
-    if(fabs(motor_input(0)) < 100 && fabs(motor_input(1)) < 100
-    && fabs(motor_input(2)) < 100 && fabs(motor_input(3)) < 100)
+    if(fabs(motor_input(0)) < 10 && fabs(motor_input(1)) < 10
+    && fabs(motor_input(2)) < 10 && fabs(motor_input(3)) < 10)
     {
         check = false;
     }

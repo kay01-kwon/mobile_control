@@ -74,7 +74,7 @@ class WheelOdometry{
     const double l_sep = l_a + l_b;
 
     // Motor spec and unit conversion ratio
-    const double gear_ratio = 73.5;
+    const double gear_ratio = 74.5;
     const double rpm_to_radps = 2.0*M_PI/60.0;
     
     // ROS
@@ -160,6 +160,8 @@ void WheelOdometry::callback_enc(const vel::ConstPtr& enc_msg)
 void WheelOdometry::calculate_velocity_position()
 {
     v_robot = Jacob * measure_val/gear_ratio*rpm_to_radps;
+    if(fabs(angular_velocity-v_robot(2))<1)     // 1  radps : 52.6944 deg/s
+        v_robot(2) = angular_velocity;
 
     velocity_heading = atan2(v_robot(1),v_robot(0));
     linear_velocity = calculate_linear_velocity(v_robot);
@@ -169,20 +171,9 @@ void WheelOdometry::calculate_velocity_position()
 
     v_est = getRotMat(yaw)*v_robot;
 
-//    if(fabs(v_robot(2))>0.1)
-//    {
-//        p_est_curr = p_est_prev 
-//        + linear_velocity/angular_velocity*getTransformVec(angle1,angle2,dt);
-//    }
-//    else
-//    {
-        p_est_curr = p_est_prev + v_est*dt;
-//    }
 
-    
-
+    p_est_curr = p_est_prev + v_est*dt;
     p_est_curr(2) = yaw;
-
     p_est_prev = p_est_curr;
 
 }
@@ -236,7 +227,7 @@ MatrixXd WheelOdometry::getRotMat(double angle)
 {
     MatrixXd R = MatrixXd(3,3);
     R << cos(angle), -sin(angle), 0,
-        sin(angle), cos(angle), 0,
+        sin(angle), sin(angle), 0,
         0,  0,  1;
 
     return R;
