@@ -10,9 +10,6 @@
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/PoseStamped.h>
 
-#include <tf/transform_listener.h>
-#include <tf/transform_broadcaster.h>
-
 #include <ethercat_test/vel.h>
 
 #define _USE_MATH_DEFINES
@@ -21,8 +18,6 @@ using teb_local_planner::TrajectoryPointMsg;
 using teb_local_planner::FeedbackMsg;
 
 using geometry_msgs::PoseStamped;
-using tf::TransformListener;
-using tf::StampedTransform;
 
 using nav_msgs::Odometry;
 using ethercat_test::vel;
@@ -106,8 +101,6 @@ class pd_control{
 
     // ROS
     ros::NodeHandle nh_;
-    TransformListener listener_;
-    StampedTransform transform;
 
     ros::Publisher publisher_cmd_vel;
     ros::Publisher publisher_error;
